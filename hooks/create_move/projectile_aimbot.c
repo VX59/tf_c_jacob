@@ -26,6 +26,8 @@ int project_speed_per_second(int weapon_id)
             return 1100;
         case TF_WEAPON_ROCKETLAUNCHER_DIRECTHIT:
             return 1980;
+        case TF_WEAPON_GRENADELAUNCHER:
+            return 1000;
         default:
             return 0;
     }
@@ -111,8 +113,21 @@ void *get_closet_fov_ent_proj(void *localplayer, struct vec3_t *shoot_pos, struc
             continue;
         }
 
-        struct vec3_t new_view_angle = get_view_angle(get_difference(aim_pos, *shoot_pos));
-        float fov_distance = get_fov(view_angle, new_view_angle);
+        struct vec3_t new_view_angle;
+        float fov_distance;
+        
+        if (get_weapon_id(localplayer) == TF_WEAPON_GRENADELAUNCHER)
+        {
+            float v = project_speed_per_second(TF_WEAPON_GRENADELAUNCHER);
+            new_view_angle = get_projectile_lob_angle(get_difference(aim_pos, *shoot_pos), v);
+            fov_distance = get_fov(view_angle, new_view_angle);
+        }
+        else
+        {
+            new_view_angle = get_view_angle(get_difference(aim_pos, *shoot_pos));
+            fov_distance = get_fov(view_angle, new_view_angle);
+        }
+
 
         if (fov_distance <= config.aimbot.fov && fov_distance < smallest_fov_angle)
         {
@@ -218,7 +233,6 @@ void projectile_aimbot(void *localplayer, struct user_cmd *user_cmd, int weapon_
     }
 
     add_bbox_decorator(L"TARGET", (struct vec3_t){207, 115, 54}, target_ent);
-
     if (config.aimbot.projectile_preview.draw_entity_prediction)
     {
         for (float t = 0.0f; t < config.aimbot.projectile_max_time; t += config.aimbot.projectile_time_step)

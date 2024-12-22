@@ -92,8 +92,32 @@ void angle_vectors(struct vec3_t angles, struct vec3_t *forward, struct vec3_t *
     }
 }
 
+struct vec3_t get_projectile_lob_angle(struct vec3_t diff, float velocity)
+{
+    // given a shooting position aiming position and velocity we calculate the parabolic arc that connects the 2 points in space
+    float g = 800;
+    float A = (g*(diff.x*diff.x))/(2*velocity);
+    float B = -sqrtf((diff.x * diff.x) + (diff.y * diff.y));
+    float C = diff.z;
+
+    // the positive root
+    float u = (-B + sqrtf(B*B - (4*A*C)))/(2*A);
+
+    float pitch_angle = atan(u) * 180/M_PI;
+    float yaw_angle = atan2(diff.y, diff.x) * 180 / M_PI;
+
+    struct vec3_t view_angle = {
+        .x = -pitch_angle,
+        .y = yaw_angle,
+        .z = 0
+    };
+
+    return view_angle;
+}
+
 struct vec3_t get_view_angle(struct vec3_t diff)
 {
+
     // Common side between two right triangles
     float c = sqrt((diff.x * diff.x) + (diff.y * diff.y));
 
