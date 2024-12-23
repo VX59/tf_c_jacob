@@ -95,7 +95,7 @@ void angle_vectors(struct vec3_t angles, struct vec3_t *forward, struct vec3_t *
 struct vec3_t get_projectile_lob_angle(struct vec3_t diff, float velocity)
 {
     // given a shooting position aiming position and velocity we calculate the parabolic arc that connects the 2 points in space
-    float g = 800;
+    float g = 400;
     float A = (g*(diff.x*diff.x))/(2*velocity);
     float B = -sqrtf((diff.x * diff.x) + (diff.y * diff.y));
     float C = diff.z;

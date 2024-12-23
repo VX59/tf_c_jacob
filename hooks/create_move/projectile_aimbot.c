@@ -27,7 +27,7 @@ int project_speed_per_second(int weapon_id)
         case TF_WEAPON_ROCKETLAUNCHER_DIRECTHIT:
             return 1980;
         case TF_WEAPON_GRENADELAUNCHER:
-            return 1000;
+            return 1216;
         default:
             return 0;
     }
@@ -52,6 +52,7 @@ void *get_closet_fov_ent_proj(void *localplayer, struct vec3_t *shoot_pos, struc
         }
 
         float predicted_time = -1.0f;
+        float predicted_theta = 0;
         struct vec3_t aim_pos = { 0.0f, 0.0f, 0.0f };
         if (ent_index <= max_clients && get_ent_lifestate(entity) == 1)
         {
@@ -76,20 +77,93 @@ void *get_closet_fov_ent_proj(void *localplayer, struct vec3_t *shoot_pos, struc
                     ent_pos.z += ent_velocity.z * t;
                 }
 
-                int rocket_speed = project_speed_per_second(weapon_id);
-                float distance = get_distance(ent_pos, *shoot_pos);
-                float time = distance / rocket_speed;
-                float time_rounded = roundf(time / config.aimbot.projectile_time_step) * config.aimbot.projectile_time_step;
-
-                if (time_rounded > t + config.aimbot.projectile_tolerance_time || 
-                    time_rounded < t - config.aimbot.projectile_tolerance_time || 
-                    !is_pos_visible(localplayer, shoot_pos, ent_pos))
+                int class_id = get_class_id(localplayer);
+                float projectile_speed;
+                if(class_id == TF_CLASS_DEMOMAN)
                 {
-                    continue;
+                    struct vec3_t localpos = get_ent_origin(localplayer);
+                    int proj_speed = project_speed_per_second(weapon_id);
+                    // position formula for the projectile given the maximum possible range at theta = pi/4
+
+                    // assume we are in the yaw plane of the ent position then this becomes a 2d problem
+                    struct vec3_t flat_proj_pos = {
+                        .x=proj_speed*cos(M_PI/4.0)*t,
+                        .y=proj_speed*sin(M_PI/4.0)*t-(1/2)*800*t*t,
+                        .z = 0
+                    };
+
+                    struct vec3_t flat_ent_pos = {
+                        .x = sqrtf(pow(ent_pos.x-localpos.x,2) + pow(ent_pos.y-localpos.y,2)),
+                        .y = localpos.z-ent_pos.z,
+                        .z = 0
+                    };
+
+                    // we found optimal t,, this is the soonest possible time when the projectile exceeds the ents dist
+                    if (flat_proj_pos.x - flat_ent_pos.x > 0)
+                    {
+                        // approximate optimal theta using logarithmic search
+                        float current_distance = get_distance(flat_ent_pos, flat_proj_pos);
+                        float threshold_distance = 1;
+                        int max_depth = 32; int i = 0;
+                        // make recursive later
+                        while(current_distance > threshold_distance)
+                        {
+                            if (i >= max_depth) break;
+
+                            float s = (M_PI/4.0)/pow(2,i);
+                            
+                            struct vec3_t sharp_proj_pos = {
+                                .x=proj_speed*cos(predicted_theta + s)*t,
+                                .y=proj_speed*sin(predicted_theta + s)*t-(1/2)*800*t*t,
+                                .z = 0
+                            };
+                            
+                            struct vec3_t wide_proj_pos = {
+                                .x=proj_speed*cos(predicted_theta - s)*t,
+                                .y=proj_speed*sin(predicted_theta - s)*t-(1/2)*800*t*t,
+                                .z = 0
+                            };
+
+                            float sharp_distance = get_distance(sharp_proj_pos, flat_ent_pos);
+                            float wide_distance = get_distance(wide_proj_pos, flat_ent_pos);
+                            if (wide_distance < sharp_distance)
+                            {
+                                current_distance = wide_distance;
+                                predicted_theta -= s;
+                            }
+                            else
+                            {
+                                current_distance = sharp_distance;
+                                predicted_theta += s;
+                            }
+                            
+                            i ++;
+                        }
+                        predicted_time = t;
+                        break;
+                    }
+
+                };
+
+                if(class_id == TF_CLASS_SOLDIER)
+                {
+                    projectile_speed = project_speed_per_second(weapon_id);
+
+                    float distance = get_distance(ent_pos, *shoot_pos);
+                    float time = distance / projectile_speed;
+                    float time_rounded = roundf(time / config.aimbot.projectile_time_step) * config.aimbot.projectile_time_step;
+
+                    if (time_rounded > t + config.aimbot.projectile_tolerance_time || 
+                        time_rounded < t - config.aimbot.projectile_tolerance_time || 
+                        !is_pos_visible(localplayer, shoot_pos, ent_pos))
+                    {
+                        continue;
+                    }
+                    predicted_time = t;
+
                 }
 
                 aim_pos = ent_pos;
-                predicted_time = t;
             }
         }
         else
@@ -115,11 +189,17 @@ void *get_closet_fov_ent_proj(void *localplayer, struct vec3_t *shoot_pos, struc
 
         struct vec3_t new_view_angle;
         float fov_distance;
-        
-        if (get_weapon_id(localplayer) == TF_WEAPON_GRENADELAUNCHER)
+
+        if (weapon_id == TF_WEAPON_GRENADELAUNCHER)
         {
             float v = project_speed_per_second(TF_WEAPON_GRENADELAUNCHER);
-            new_view_angle = get_projectile_lob_angle(get_difference(aim_pos, *shoot_pos), v);
+            struct vec3_t diff = get_difference(aim_pos, *shoot_pos); 
+            struct vec3_t va = {
+                .x = -predicted_theta * 180.0/M_PI,
+                .y = atan2(diff.y, diff.x) * 180 / M_PI,
+                .z = 0
+            };
+            new_view_angle = va;
             fov_distance = get_fov(view_angle, new_view_angle);
         }
         else
