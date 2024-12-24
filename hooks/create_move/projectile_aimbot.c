@@ -50,121 +50,159 @@ void *get_closet_fov_ent_proj(void *localplayer, struct vec3_t *shoot_pos, struc
         {
             continue;
         }
-
-        float predicted_time = -1.0f;
-        float predicted_theta = 0;
+        float predicted_time = 0.0f;
         struct vec3_t aim_pos = { 0.0f, 0.0f, 0.0f };
         if (ent_index <= max_clients && get_ent_lifestate(entity) == 1)
         {
-            for (float t = 0.0f; t < config.aimbot.projectile_max_time; t += config.aimbot.projectile_time_step)
+
+            struct vec3_t ent_pos = get_ent_origin(entity);
+            struct vec3_t loc_pos = get_ent_origin(localplayer);
+            struct vec3_t ent_velocity;
+            bool ent_in_air = (get_ent_flags(entity) & 1) == 0;
+
+            estimate_abs_velocity(entity, &ent_velocity);
+
+            double gp = 400;
+            double ga = 0;
+
+            if (ent_in_air)
             {
-                struct vec3_t ent_pos = get_ent_origin(entity);
-                struct vec3_t ent_velocity;
-                bool ent_in_air = (get_ent_flags(entity) & 1) == 0;
+                ga = 800;
+            }
 
-                estimate_abs_velocity(entity, &ent_velocity);
+            double x_ento = hypotf(ent_pos.x - loc_pos.x, ent_pos.y - loc_pos.y);
+            double x_o = 0, y_o = get_ent_eye_pos(localplayer).z;
+            double v_o = project_speed_per_second(weapon_id);
+            double v_entx = hypotf(ent_velocity.x, ent_velocity.y);
+            double v_enty = ent_velocity.z;
+            double y_ento = ent_pos.z - loc_pos.z;
+            
+            // most likely a and be dont bracket the root
+            double a = 0, b = 0;
+            double Pa = P(a, gp, ga, x_ento, x_o, v_o, v_entx, v_enty, y_ento, y_o);
+            //log_msg("Initial P(a) = %f\n", Pa);
 
-                if (ent_in_air)
-                {
-                    ent_pos.x += ent_velocity.x * t;
-                    ent_pos.y += ent_velocity.y * t;
-                    ent_pos.z += ent_velocity.z * t - (0.5f * 800 * (t * t));
+            bool valid_interval_found = false;
+
+            for (double s = a; s < M_PI; s += 0.00001) {
+                
+                double Ps = P(s, gp, ga, x_ento, x_o, v_o, v_entx, v_enty, y_ento, y_o);
+                if (Pa > 0 && Ps < 0) {
+                    b = s;
+                    valid_interval_found = true;
+                    break;
                 }
-                else
-                {
-                    ent_pos.x += ent_velocity.x * t;
-                    ent_pos.y += ent_velocity.y * t;
-                    ent_pos.z += ent_velocity.z * t;
+                if (Pa < 0 && Ps > 0) {
+                    b = s;
+                    valid_interval_found = true;
+                    break;
                 }
-
-                int class_id = get_class_id(localplayer);
-                float projectile_speed;
-                if(class_id == TF_CLASS_DEMOMAN)
-                {
-                    struct vec3_t localpos = get_ent_origin(localplayer);
-                    int proj_speed = project_speed_per_second(weapon_id);
-                    // position formula for the projectile given the maximum possible range at theta = pi/4
-
-                    // assume we are in the yaw plane of the ent position then this becomes a 2d problem
-                    struct vec3_t flat_proj_pos = {
-                        .x=proj_speed*cos(M_PI/4.0)*t,
-                        .y=proj_speed*sin(M_PI/4.0)*t-(1/2)*800*t*t,
-                        .z = 0
-                    };
-
-                    struct vec3_t flat_ent_pos = {
-                        .x = sqrtf(pow(ent_pos.x-localpos.x,2) + pow(ent_pos.y-localpos.y,2)),
-                        .y = localpos.z-ent_pos.z,
-                        .z = 0
-                    };
-
-                    // we found optimal t,, this is the soonest possible time when the projectile exceeds the ents dist
-                    if (flat_proj_pos.x - flat_ent_pos.x > 0)
-                    {
-                        // approximate optimal theta using logarithmic search
-                        float current_distance = get_distance(flat_ent_pos, flat_proj_pos);
-                        float threshold_distance = 1;
-                        int max_depth = 32; int i = 0;
-                        // make recursive later
-                        while(current_distance > threshold_distance)
-                        {
-                            if (i >= max_depth) break;
-
-                            float s = (M_PI/4.0)/pow(2,i);
-                            
-                            struct vec3_t sharp_proj_pos = {
-                                .x=proj_speed*cos(predicted_theta + s)*t,
-                                .y=proj_speed*sin(predicted_theta + s)*t-(1/2)*800*t*t,
-                                .z = 0
-                            };
-                            
-                            struct vec3_t wide_proj_pos = {
-                                .x=proj_speed*cos(predicted_theta - s)*t,
-                                .y=proj_speed*sin(predicted_theta - s)*t-(1/2)*800*t*t,
-                                .z = 0
-                            };
-
-                            float sharp_distance = get_distance(sharp_proj_pos, flat_ent_pos);
-                            float wide_distance = get_distance(wide_proj_pos, flat_ent_pos);
-                            if (wide_distance < sharp_distance)
-                            {
-                                current_distance = wide_distance;
-                                predicted_theta -= s;
-                            }
-                            else
-                            {
-                                current_distance = sharp_distance;
-                                predicted_theta += s;
-                            }
-                            
-                            i ++;
-                        }
-                        predicted_time = t;
-                        break;
-                    }
-
-                };
-
-                if(class_id == TF_CLASS_SOLDIER)
-                {
-                    projectile_speed = project_speed_per_second(weapon_id);
-
-                    float distance = get_distance(ent_pos, *shoot_pos);
-                    float time = distance / projectile_speed;
-                    float time_rounded = roundf(time / config.aimbot.projectile_time_step) * config.aimbot.projectile_time_step;
-
-                    if (time_rounded > t + config.aimbot.projectile_tolerance_time || 
-                        time_rounded < t - config.aimbot.projectile_tolerance_time || 
-                        !is_pos_visible(localplayer, shoot_pos, ent_pos))
-                    {
-                        continue;
-                    }
-                    predicted_time = t;
-
+            }
+            double Pb = P(b, gp, ga, x_ento, x_o, v_o, v_entx, v_enty, y_ento, y_o);
+            for (double s = b; s > -M_PI; s -= 0.00001) {
+                
+                double Ps = P(s, gp, ga, x_ento, x_o, v_o, v_entx, v_enty, y_ento, y_o);
+                if (Pb > 0 && Ps < 0) {
+                    a = s;
+                    valid_interval_found = true;
+                    break;
                 }
-
+                if (Pb < 0 && Ps > 0) {
+                    a = s;
+                    valid_interval_found = true;
+                    break;
+                }
+            }
+            if (!valid_interval_found) {
+                //log_msg("No valid root interval found.\n");
+                predicted_time = 0;
                 aim_pos = ent_pos;
             }
+            else
+            {
+                //log_msg("Found interval: a = %f, b = %f\n", a, b);
+
+                // Now run Brent's method with tighter settings
+                double tol = 0.00001;
+                int max_iter = 1000;
+                double root = Brent(P, a, b, tol, max_iter, gp, ga, x_ento, x_o, v_o, v_entx, v_enty, y_ento, y_o);
+
+                if (!isnan(root))
+                {
+                    log_msg("The root is %f\n", root * 180.0f/M_PI);
+
+
+                    estimate_abs_velocity(entity, &ent_velocity);
+                    double T = (x_ento-x_o)/(v_o*cos(root)-v_entx);
+
+                    if (ent_in_air)
+                    {
+
+                        ent_pos.x += ent_velocity.x * T;
+                        ent_pos.y += ent_velocity.y * T;
+                        ent_pos.z += ent_velocity.z * T - (0.5f * 800 * (T * T));
+
+                    }
+                    else
+                    {
+
+                        ent_pos.x += ent_velocity.x * T;
+                        ent_pos.y += ent_velocity.y * T;
+                        ent_pos.z += ent_velocity.z * T;
+
+                    }
+                    log_msg("Time of flight is %f", T);
+                    predicted_time = T;
+
+                    aim_pos = ent_pos;
+                }
+                else{
+                    predicted_time = 0;
+                    aim_pos = ent_pos;
+                }
+            }
+
+            
+            // else
+            // {
+            //     for (float t = 0.0f; t < config.aimbot.projectile_max_time; t += config.aimbot.projectile_time_step)
+            //     {
+            //         struct vec3_t ent_pos = get_ent_origin(entity);
+            //         struct vec3_t ent_velocity;
+            //         bool ent_in_air = (get_ent_flags(entity) & 1) == 0;
+
+            //         estimate_abs_velocity(entity, &ent_velocity);
+
+            //         if (ent_in_air)
+            //         {
+            //             ent_pos.x += ent_velocity.x * t;
+            //             ent_pos.y += ent_velocity.y * t;
+            //             ent_pos.z += ent_velocity.z * t - (0.5f * 800 * (t * t));
+            //         }
+            //         else
+            //         {
+            //             ent_pos.x += ent_velocity.x * t;
+            //             ent_pos.y += ent_velocity.y * t;
+            //             ent_pos.z += ent_velocity.z * t;
+            //         }
+
+            //         float rocket_speed = project_speed_per_second(weapon_id);
+
+            //         float distance = get_distance(ent_pos, *shoot_pos);
+            //         float time = distance / rocket_speed;
+            //         float time_rounded = roundf(time / config.aimbot.projectile_time_step) * config.aimbot.projectile_time_step;
+
+            //         if (time_rounded > t + config.aimbot.projectile_tolerance_time || 
+            //             time_rounded < t - config.aimbot.projectile_tolerance_time || 
+            //             !is_pos_visible(localplayer, shoot_pos, ent_pos))
+            //         {
+            //             continue;
+            //         }
+            //         predicted_time = t;
+
+            //         aim_pos = ent_pos;
+            //     }
+            // }
         }
         else
         {
@@ -190,24 +228,8 @@ void *get_closet_fov_ent_proj(void *localplayer, struct vec3_t *shoot_pos, struc
         struct vec3_t new_view_angle;
         float fov_distance;
 
-        if (weapon_id == TF_WEAPON_GRENADELAUNCHER)
-        {
-            float v = project_speed_per_second(TF_WEAPON_GRENADELAUNCHER);
-            struct vec3_t diff = get_difference(aim_pos, *shoot_pos); 
-            struct vec3_t va = {
-                .x = -predicted_theta * 180.0/M_PI,
-                .y = atan2(diff.y, diff.x) * 180 / M_PI,
-                .z = 0
-            };
-            new_view_angle = va;
-            fov_distance = get_fov(view_angle, new_view_angle);
-        }
-        else
-        {
-            new_view_angle = get_view_angle(get_difference(aim_pos, *shoot_pos));
-            fov_distance = get_fov(view_angle, new_view_angle);
-        }
-
+        new_view_angle = get_view_angle(get_difference(aim_pos, *shoot_pos));
+        fov_distance = get_fov(view_angle, new_view_angle);
 
         if (fov_distance <= config.aimbot.fov && fov_distance < smallest_fov_angle)
         {

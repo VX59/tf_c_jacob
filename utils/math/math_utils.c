@@ -97,7 +97,7 @@ struct vec3_t get_projectile_lob_angle(struct vec3_t diff, float velocity)
     // given a shooting position aiming position and velocity we calculate the parabolic arc that connects the 2 points in space
     float g = 400;
     float A = (g*(diff.x*diff.x))/(2*velocity);
-    float B = -sqrtf((diff.x * diff.x) + (diff.y * diff.y));
+    float B = sqrtf((diff.x * diff.x) + (diff.y * diff.y));
     float C = diff.z;
 
     // the positive root
@@ -131,4 +131,103 @@ struct vec3_t get_view_angle(struct vec3_t diff)
     };
 
     return view_angle;
+}
+
+double P(double theta, double g, double a, double x_ento, double x_o, double v_o, 
+        double v_entx, double v_enty, double y_ento, double y_o)
+{
+    double dvx = v_o * cos(theta) - v_entx;
+    double dx = x_ento - x_o;
+
+    double dvy = v_enty - v_o * sin(theta);
+    double dy = y_ento - y_o;
+
+    if (fabs(dvx) < __DBL_EPSILON__)
+    {
+        return INFINITY;
+    }
+
+    double A = -0.5f*(g+a) * pow(dx/dvx,2);
+    double B = dvy*dx/dvx;
+    double C = dy;
+
+    return A + B + C;
+}
+
+double Brent(double (*P)(double, double, double, double, double, double, double, double, double, double)
+,double a, double b, double tol, int max_iter, double gp, double ga, double x_ento, double x_o, double v_o, double v_entx, double v_enty, double y_ento, double y_o)
+{
+    double fa = P(a,gp,ga,x_ento,x_o,v_o,v_entx,v_enty,y_ento, y_o);
+    double fb = P(b,gp,ga,x_ento,x_o,v_o,v_entx,v_enty,y_ento, y_o);
+    if (fa * fb >= 0)
+    {
+        log_msg("No root bracketing: P(a) = %f, P(b) = %f\n", fa, fb);
+        return NAN;
+    }
+
+    double c = a, fc = fa;
+    double d = 0, e = 0;
+    double m, total_act;
+    for (int i = 0; i < max_iter; i++)
+    {
+        if (fabs(fc) < fabs(fb))
+        {
+            a = b; b = c; c = a;
+            fa = fb; fb = fc; fc = fa;
+        }
+
+        total_act = 2 * __DBL_EPSILON__ * fabs(b) + tol/2.0f;
+        m = 0.5 * (c - b);
+
+        if (fabs(m) <= total_act || fb == 0)
+        {
+            return b;   // converged
+        }
+
+        if (fabs(e) >= total_act && fabs(fa) > fabs(fb))
+        {
+            double s = fb / fa;
+            double p , q;
+
+            if (a == c)
+            {
+                // secant method
+                p = 2 * m * s;
+                q = 1 - s;
+            }
+            else
+            {
+                // inverse quadratic interpolation
+                q = fa / fc;
+                double r = fb / fc;
+
+                p = s * (2 * m * q * (q - r) - (b - a) * (r - 1));
+                q = (q - 1) * (r - 1) * (s - 1);
+            }
+
+            if (p > 0) q = -q;
+            p = fabs(p);
+
+            if (2 * p < fmin(3 * m * q - fabs(total_act * q), fabs(e * q)))
+            {
+                e = d; d = p / q;
+            }
+            else
+            {
+                d = m; e = m;
+            }
+        }
+        else
+        {
+            d = m; e = m;
+        }
+
+        fb = P(b, gp, ga, x_ento, x_o, v_o, v_entx, v_enty, y_ento, y_o);
+        if ((fb > 0 && fc > 0) || (fb < 0 && fc < 0))
+        {
+            c = a; fc = fa; e = d = b - a;
+        }
+    }
+    log_msg("failed to converge m %f total act %f\n", fabs(m), total_act);
+    return NAN;
 }
