@@ -56,7 +56,7 @@ void *get_closet_fov_ent_proj(void *localplayer, struct vec3_t *shoot_pos, struc
         {
 
             struct vec3_t ent_pos = get_ent_origin(entity);
-            struct vec3_t loc_pos = get_ent_origin(localplayer);
+            struct vec3_t loc_pos = get_ent_eye_pos(localplayer);
             struct vec3_t ent_velocity;
             bool ent_in_air = (get_ent_flags(entity) & 1) == 0;
 
@@ -84,7 +84,7 @@ void *get_closet_fov_ent_proj(void *localplayer, struct vec3_t *shoot_pos, struc
 
             bool valid_interval_found = false;
 
-            for (double s = a; s < M_PI; s += 0.00001) {
+            for (double s = a; s < M_PI; s += 0.001) {
                 
                 double Ps = P(s, gp, ga, x_ento, x_o, v_o, v_entx, v_enty, y_ento, y_o);
                 if (Pa > 0 && Ps < 0) {
@@ -99,7 +99,7 @@ void *get_closet_fov_ent_proj(void *localplayer, struct vec3_t *shoot_pos, struc
                 }
             }
             double Pb = P(b, gp, ga, x_ento, x_o, v_o, v_entx, v_enty, y_ento, y_o);
-            for (double s = b; s > -M_PI; s -= 0.00001) {
+            for (double s = b; s > -M_PI; s -= 0.001) {
                 
                 double Ps = P(s, gp, ga, x_ento, x_o, v_o, v_entx, v_enty, y_ento, y_o);
                 if (Pb > 0 && Ps < 0) {
@@ -123,85 +123,91 @@ void *get_closet_fov_ent_proj(void *localplayer, struct vec3_t *shoot_pos, struc
                 //log_msg("Found interval: a = %f, b = %f\n", a, b);
 
                 // Now run Brent's method with tighter settings
-                double tol = 0.00001;
-                int max_iter = 1000;
-                double root = Brent(P, a, b, tol, max_iter, gp, ga, x_ento, x_o, v_o, v_entx, v_enty, y_ento, y_o);
-
-                if (!isnan(root))
+                if(is_pos_visible(localplayer, shoot_pos, ent_pos))
                 {
-                    log_msg("The root is %f\n", root * 180.0f/M_PI);
+                    double tol = 0.001;
+                    int max_iter = 5000;
+                    double root = Brent(P, a, b, tol, max_iter, gp, ga, x_ento, x_o, v_o, v_entx, v_enty, y_ento, y_o);
 
-
-                    estimate_abs_velocity(entity, &ent_velocity);
-                    double T = (x_ento-x_o)/(v_o*cos(root)-v_entx);
-
-                    if (ent_in_air)
+                    if (!isnan(root))
                     {
+                        log_msg("The root is %f\n", root * 180.0f/M_PI);
 
-                        ent_pos.x += ent_velocity.x * T;
-                        ent_pos.y += ent_velocity.y * T;
-                        ent_pos.z += ent_velocity.z * T - (0.5f * 800 * (T * T));
 
+                        estimate_abs_velocity(entity, &ent_velocity);
+                        double T = (x_ento-x_o)/(v_o*cos(root)-v_entx);
+                        T *= 0.95;
+                        if (ent_in_air)
+                        {
+                            ent_pos.x += ent_velocity.x * T;
+                            ent_pos.y += ent_velocity.y * T;
+                            ent_pos.z += ent_velocity.z * T - (0.5f * 800 * (T * T));
+
+                        }
+                        else
+                        {
+
+                            ent_pos.x += ent_velocity.x * T;
+                            ent_pos.y += ent_velocity.y * T;
+                            ent_pos.z += ent_velocity.z * T;
+
+                        }
+                        log_msg("Time of flight is %f", T);
+                        predicted_time = T;
+
+                        aim_pos = ent_pos;
                     }
-                    else
-                    {
-
-                        ent_pos.x += ent_velocity.x * T;
-                        ent_pos.y += ent_velocity.y * T;
-                        ent_pos.z += ent_velocity.z * T;
-
+                    else{
+                        predicted_time = 0;
+                        aim_pos = ent_pos;
                     }
-                    log_msg("Time of flight is %f", T);
-                    predicted_time = T;
-
-                    aim_pos = ent_pos;
                 }
-                else{
-                    predicted_time = 0;
-                    aim_pos = ent_pos;
-                }
+                
             }
 
-            
-            // else
+            // for (float t = 0.0f; t < config.aimbot.projectile_max_time; t += config.aimbot.projectile_time_step)
             // {
-            //     for (float t = 0.0f; t < config.aimbot.projectile_max_time; t += config.aimbot.projectile_time_step)
+            //     struct vec3_t ent_pos = get_ent_origin(entity);
+            //     struct vec3_t ent_velocity;
+            //     bool ent_in_air = (get_ent_flags(entity) & 1) == 0;
+
+            //     estimate_abs_velocity(entity, &ent_velocity);
+
+            //     if (ent_in_air)
             //     {
-            //         struct vec3_t ent_pos = get_ent_origin(entity);
-            //         struct vec3_t ent_velocity;
-            //         bool ent_in_air = (get_ent_flags(entity) & 1) == 0;
-
-            //         estimate_abs_velocity(entity, &ent_velocity);
-
-            //         if (ent_in_air)
-            //         {
-            //             ent_pos.x += ent_velocity.x * t;
-            //             ent_pos.y += ent_velocity.y * t;
-            //             ent_pos.z += ent_velocity.z * t - (0.5f * 800 * (t * t));
-            //         }
-            //         else
-            //         {
-            //             ent_pos.x += ent_velocity.x * t;
-            //             ent_pos.y += ent_velocity.y * t;
-            //             ent_pos.z += ent_velocity.z * t;
-            //         }
-
-            //         float rocket_speed = project_speed_per_second(weapon_id);
-
-            //         float distance = get_distance(ent_pos, *shoot_pos);
-            //         float time = distance / rocket_speed;
-            //         float time_rounded = roundf(time / config.aimbot.projectile_time_step) * config.aimbot.projectile_time_step;
-
-            //         if (time_rounded > t + config.aimbot.projectile_tolerance_time || 
-            //             time_rounded < t - config.aimbot.projectile_tolerance_time || 
-            //             !is_pos_visible(localplayer, shoot_pos, ent_pos))
-            //         {
-            //             continue;
-            //         }
-            //         predicted_time = t;
-
-            //         aim_pos = ent_pos;
+            //         ent_pos.x += ent_velocity.x * t;
+            //         ent_pos.y += ent_velocity.y * t;
+            //         ent_pos.z += ent_velocity.z * t - (0.5f * 800 * (t * t));
             //     }
+            //     else
+            //     {
+            //         ent_pos.x += ent_velocity.x * t;
+            //         ent_pos.y += ent_velocity.y * t;
+            //         ent_pos.z += ent_velocity.z * t;
+            //     }
+
+            //     float rocket_speed = project_speed_per_second(weapon_id);
+
+            //     float R = hypotf(ent_pos.x - get_ent_eye_pos(localplayer).x, ent_pos.y - get_ent_eye_pos(localplayer).y);
+
+            //     float A = 400*R*R/2*rocket_speed;
+            //     float B = -R;
+            //     float C = 400*R*R/2*rocket_speed+(ent_pos.z - get_ent_eye_pos(localplayer).z);
+                
+            //     float u = positive_quadratic_root(A,B,C);
+            //     float theta = atan(u);
+            //     float Tf = R/(rocket_speed*cosf(theta));
+            //     float time_rounded = roundf(Tf / config.aimbot.projectile_time_step) * config.aimbot.projectile_time_step;
+
+            //     if (time_rounded > t + config.aimbot.projectile_tolerance_time || 
+            //         time_rounded < t - config.aimbot.projectile_tolerance_time || 
+            //         !is_pos_visible(localplayer, shoot_pos, ent_pos))
+            //     {
+            //         continue;
+            //     }
+            //     predicted_time = t;
+
+            //     aim_pos = ent_pos;
             // }
         }
         else
