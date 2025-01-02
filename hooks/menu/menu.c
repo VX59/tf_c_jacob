@@ -115,6 +115,11 @@ void multi_select_combo_box(struct nk_context *ctx, const char **options, int **
     }
 }
 
+void draw_ent_targeting_manager_tab(struct nk_context *ctx)
+{
+    
+}
+
 void draw_aim_tab(struct nk_context *ctx)
 {
     NK_HEADER_ROW(ctx, "General", NK_TEXT_LEFT);

@@ -31,7 +31,7 @@ int project_speed_per_second(int weapon_id)
     }
 }
 
-void *get_closet_fov_ent_proj(void *localplayer, struct vec3_t *shoot_pos, struct vec3_t view_angle, int weapon_id, struct vec3_t *result_angle, struct vec3_t *result_pos, float *result_time)
+void *get_closet_fov_ent_proj(void *localplayer, struct vec3_t *shoot_pos, struct vec3_t view_angle, int weapon_id, struct vec3_t *result_angle, struct vec3_t *result_pos, float *result_time, ETM *etm)
 {
     void *target_ent = NULL;
     float smallest_fov_angle = __FLT_MAX__;
@@ -40,11 +40,21 @@ void *get_closet_fov_ent_proj(void *localplayer, struct vec3_t *shoot_pos, struc
     for (int ent_index = 1; ent_index <= get_max_entities(); ent_index++)
     {
         void *entity = get_client_entity(ent_index);
+        
+        // blacklist by ent_index.. add targeting later
+        struct player_info_t ent_info;
+        if (!get_player_info(ent_index, &ent_info))
+        {
+            return;
+        }
+
+        int ent_target_status = get_ent_target_status(etm, ent_index);
 
         if (entity == NULL || 
             entity == localplayer || 
             is_ent_dormant(entity) || 
-            get_ent_team(entity) == get_ent_team(localplayer))
+            get_ent_team(entity) == get_ent_team(localplayer) ||
+            ent_target_status == AIMBOT_BLACKLIST) // the entity is blacklisted (a friend)
         {
             continue;
         }
@@ -139,7 +149,7 @@ void get_projectile_fire_setup(void *localplayer, struct vec3_t view_angles, str
     result->z = shoot_pos.z + (forward.z * offset.x) + (right.z * offset.y) + (up.z * offset.z);
 }
 
-void projectile_aimbot(void *localplayer, struct user_cmd *user_cmd, int weapon_id)
+void projectile_aimbot(void *localplayer, struct user_cmd *user_cmd, int weapon_id, ETM *etm)
 {
     struct vec3_t original_view_angle = user_cmd->viewangles;
     float original_side_move = user_cmd->sidemove;

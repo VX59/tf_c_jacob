@@ -213,3 +213,90 @@ void set_thirdperson(void *entity, bool value)
 {
   *(bool *)((__uint64_t)(entity) + 0x240C) = value;
 }
+
+
+void set_ent_target_status(ETM *etm, unsigned long user_id, int value)
+{
+
+    ETS ets = {.user_id = user_id, .status = value};
+
+    switch (value)
+    {
+        case AIMBOT_BLACKLIST: // blacklist player
+        if (etm->targets_status < MAX_TARGETS)
+        {
+            // add to blacklisted and potentially remove from targets
+            for (int i = 0; i < MAX_TARGETS; i++) // if one was removed this checks for that gap in the buffer instead of moving stuff over
+            {
+
+                if(etm->targets_status[i] == NULL)
+                {
+                    etm->targets_status[i] = &ets;
+                    etm->targets_length ++;
+                    break;
+                }
+
+                if(etm->targets_status[i] != NULL && &etm->targets_status[i]->user_id == user_id && &etm->targets_status[i]->status != AIMBOT_BLACKLIST)
+                {
+                    etm->targets_status[i]->status = value;
+                }
+            }
+        }
+        break;
+
+        case AIMBOT_TARGET: // target player
+        if (etm->targets_length < MAX_TARGETS)
+        {
+            for (int i = 0; i < MAX_TARGETS; i++)
+            {
+
+                if(etm->targets_status[i] == NULL)
+                {
+                    etm->targets_status[i] = &ets;
+                    etm->targets_length ++;
+                    break;
+                }
+
+                if(etm->targets_status[i] != NULL && &etm->targets_status[i]->user_id == user_id && &etm->targets_status[i]->status != AIMBOT_TARGET)
+                {
+                    etm->targets_status[i]->status = value;
+                }
+            }
+        }
+        break;
+
+        default:
+        for (int i = 0; i < MAX_TARGETS; i++)
+        {
+            if (etm->targets_length > 0 && etm->targets_status[i] == user_id)
+            {
+                etm->targets_status[i] = NULL;
+                etm->targets_length --;
+            }
+        }
+        break;
+    }
+}
+
+int get_ent_target_status(ETM *etm, unsigned long user_id)
+{
+    for (int i = 0; i < MAX_TARGETS; i++)
+    {
+        if(etm->targets_status[i] != NULL && etm->targets_status[i] == user_id)
+        {
+            return etm->targets_status[i]->status;
+        }
+    }
+
+    return 0;
+}
+
+void reset_targets_status(ETM *etm)
+{
+    etm->targets_length = 0;
+
+    for (int i = 0; i < MAX_TARGETS; i++)
+    {
+        etm->targets_status[i] = NULL;
+    }
+}

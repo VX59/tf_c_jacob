@@ -7,7 +7,7 @@
 
 #include <stddef.h>
 
-void aimbot(void *localplayer, struct user_cmd *user_cmd)
+void aimbot(void *localplayer, struct user_cmd *user_cmd, ETM *etm)
 {
     if (!config.aimbot.aimbot_enabled)
     {
@@ -26,10 +26,10 @@ void aimbot(void *localplayer, struct user_cmd *user_cmd)
     
     if (is_projectile_class && is_projectile_weapon)
     {
-        projectile_aimbot(localplayer, user_cmd, weapon_id);
+        projectile_aimbot(localplayer, user_cmd, weapon_id, etm);
     }
     else
     {
-        hitscan_aimbot(localplayer, user_cmd);
+        hitscan_aimbot(localplayer, user_cmd, etm);
     }
 }

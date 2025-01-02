@@ -1,8 +1,9 @@
 #ifndef ENTITY_H
 #define ENTITY_H
+#define MAX_TARGETS 1000
 
 #include "../math/vec3.h"
-
+#include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -28,6 +29,34 @@ bool can_attack(void *localplayer);
 int get_class_id(void *entity);
 struct vec3_t get_shoot_pos(void* entity);
 void set_thirdperson(void *entity, bool value);
+
+void reset_targets_status(ETM *etm);
+
+void set_ent_target_status(ETM *etm, unsigned long user_id, int value);
+
+int get_ent_target_status(ETM *etm, unsigned long user_id);
+
+void save_targets_status(ETM *etm, FILE *fp);
+
+typedef struct entity_target_status
+{
+	unsigned long user_id;
+	char status;
+} ETS;
+
+typedef struct entity_targeting_manager
+{
+	ETS *targets_status[MAX_TARGETS];
+	int targets_length;
+
+	bool target_init;
+} ETM;
+
+enum
+{
+	AIMBOT_BLACKLIST = -1,
+	AIMBOT_TARGET = 1,
+};
 
 enum
 {
